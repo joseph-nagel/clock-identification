@@ -23,6 +23,7 @@ SHAPE = (224, 224)
 MEAN = (0.485, 0.456, 0.406)
 STD = (0.229, 0.224, 0.225)
 
+
 transform = {
     # resized images
     'resize': transforms.Compose([
@@ -60,7 +61,7 @@ binary_model = nn.Sequential(
 binary_model.eval()
 
 
-class OLXModel():
+class OLXModel:
     '''
     Final model class that predicts bluriness and clockness.
 
@@ -74,13 +75,19 @@ class OLXModel():
     '''
 
     def __init__(self, weights_path='weights.pt', max_blur=98.52080247322063):
+
         self.blur_score = BlurScore(max_blur=max_blur)
 
         self.binary_model = binary_model
         self.binary_model[-1].load_state_dict(torch.load(weights_path))
 
     def __call__(self, image, transform_mode='full', threshold=0.5):
-        return self.predict(image, transform_mode, threshold)
+
+        return self.predict(
+            image,
+            transform_mode=transform_mode,
+            threshold=threshold
+        )
 
     def predict(self, image, transform_mode='full', threshold=0.5):
         '''

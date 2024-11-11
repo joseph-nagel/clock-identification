@@ -14,8 +14,11 @@ from .blur import BlurScore, blur_score
 from .data import DataImport
 
 from .torch import (
-    BinarySet, SummedProbabilities,
-    predict_loader, analyze_predictions,
-    BalancedSampler, ClassifierTraining
+    BinarySet,
+    SummedProbabilities,
+    BalancedSampler,
+    ClassifierTraining,
+    predict_loader,
+    analyze_predictions
 )
 

@@ -49,13 +49,16 @@ class BinarySet(Dataset):
 
 def _create_transformer(transform):
     '''Create a transformer function..'''
+
     if transform is None: # just reshape
         def transformer(image):
-            return image[None,...].transpose(0,3,1,2)
+            return image[None,...].transpose(0, 3, 1, 2)
+
     else: # torchvision transform
         def transformer(image):
             image = transform(image)
             return image
+
     return transformer
 
 
@@ -75,14 +78,17 @@ class SummedProbabilities(nn.Module):
 
 def analyze_predictions(model, data_loader, threshold=None, k=None, target_ids=None):
     '''Analyze the model predictions w.r.t. a data loader.'''
+
     y_pred, y_true = predict_loader(model, data_loader, return_true=True)
 
     # thresholded probabilities
     if threshold is not None and k is None and target_ids is None:
         y_pred = (y_pred >= threshold).type(y_true.dtype)
+
     # top-k predictions
     elif k is not None and target_ids is not None and threshold is None:
         top_prob, top_class = torch.topk(y_pred, k=k, dim=1)
+
         y_pred = torch.tensor([torch.any(torch.tensor([x in class_ids for x in target_ids]))
                                for class_ids in top_class], dtype=y_true.dtype)
 
@@ -105,17 +111,18 @@ def analyze_predictions(model, data_loader, threshold=None, k=None, target_ids=N
     return summary
 
 
+@torch.no_grad()
 def predict_loader(model, data_loader, return_true=True):
     '''Compute model predictions over a data loader.'''
-    pred_list = []
-    true_list = []
 
     model.eval()
 
-    with torch.no_grad():
-        for X_batch, y_batch in data_loader:
-            true_list.append(y_batch)
-            pred_list.append(model(X_batch)) # TODO: Enable GPU support
+    pred_list = []
+    true_list = []
+
+    for X_batch, y_batch in data_loader:
+        true_list.append(y_batch)
+        pred_list.append(model(X_batch)) # TODO: Enable GPU support
 
     y_pred = torch.cat(pred_list, dim=0)
     y_true = torch.cat(true_list, dim=0)
@@ -151,6 +158,7 @@ class BalancedSampler(Sampler):
     '''
 
     def __init__(self, dataset, no_samples=None, indices=None):
+
         self.indices = list(range(len(dataset)))
 
         if no_samples is None:
@@ -160,14 +168,19 @@ class BalancedSampler(Sampler):
 
         # class occurrence counts
         data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+
         labels_list = []
+
         for image, label in data_loader:
             labels_list.append(label)
+
         labels_tensor = torch.cat(labels_list, dim=0)
+
         unique_labels, counts = torch.unique(labels_tensor, return_counts=True)
 
         # unnormalized probabilities
-        weights_for_class = 1.0 / counts.float()
+        weights_for_class = 1. / counts.float()
+
         weights_for_index = torch.tensor(
             [weights_for_class[labels_tensor[idx]] for idx in self.indices]
         )
@@ -175,7 +188,8 @@ class BalancedSampler(Sampler):
         # zero indices
         if indices is not None:
             zero_ids = np.setdiff1d(self.indices, indices).tolist()
-            weights_for_index[zero_ids] = torch.tensor(0.0)
+
+            weights_for_index[zero_ids] = torch.tensor(0.)
 
         # balanced sampling distribution
         self.categorical = torch.distributions.Categorical(probs=weights_for_index)
@@ -187,7 +201,7 @@ class BalancedSampler(Sampler):
         return self.no_samples
 
 
-class ClassifierTraining():
+class ClassifierTraining:
     '''
     Training classifier models.
 
@@ -226,24 +240,30 @@ class ClassifierTraining():
 
     '''
 
-    def __init__(self, model,
-                 criterion,
-                 optimizer,
-                 train_loader,
-                 val_loader=None,
-                 device=None):
+    def __init__(
+        self,
+        model,
+        criterion,
+        optimizer,
+        train_loader,
+        val_loader=None,
+        device=None
+    ):
+
         # arguments
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
         self.train_loader = train_loader
         self.val_loader = val_loader
+
         # device
         if device is None:
             # self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
             self.device = torch.device('cpu') # TODO: Enable GPU support
         else:
             self.device = device
+
         self.model = self.model.to(self.device)
 
     def __call__(self, X):
@@ -256,112 +276,169 @@ class ClassifierTraining():
         y = self(X)
         return y
 
-    def fit(self, no_epochs, log_interval=100, threshold=0.5, initial_test=True):
+    def fit(
+        self,
+        no_epochs,
+        log_interval=100,
+        threshold=0.5,
+        initial_test=True
+    ):
         '''Perform a number of training epochs.'''
+
         self.epoch = 0
+
         train_losses = []
         val_losses = []
         val_accs = []
+
         # initial test
         if initial_test:
+
             train_loss, train_acc = self.test(self.train_loader, threshold=threshold)
             val_loss, val_acc = self.test(self.val_loader, threshold=threshold)
+
             train_losses.append(train_loss)
             val_losses.append(val_loss)
             val_accs.append(val_acc)
+
             print('Started training: {}, avg. val. loss: {:.4f}, val. acc.: {:.4f}' \
                   .format(self.epoch, val_loss, val_acc))
+
         # training loop
         for epoch_idx in range(no_epochs):
-            train_loss = self.train_epoch(log_interval, threshold=threshold)
-            train_losses.append(train_loss)
+
             self.epoch += 1
+
+            train_loss = self.train_epoch(log_interval, threshold=threshold)
+
+            train_losses.append(train_loss)
+
             if self.val_loader is not None:
+
                 val_loss, val_acc = self.test(threshold=threshold)
+
                 val_losses.append(val_loss)
                 val_accs.append(val_acc)
+
                 print('Finished epoch: {}, avg. val. loss: {:.4f}, val. acc.: {:.4f}' \
                       .format(self.epoch, val_loss, val_acc))
-        history = {'no_epochs': no_epochs,
-                   'train_loss': train_losses,
-                   'val_loss': val_losses,
-                   'val_acc': val_accs}
+
+        history = {
+            'no_epochs': no_epochs,
+            'train_loss': train_losses,
+            'val_loss': val_losses,
+            'val_acc': val_accs
+        }
+
         return history
 
     def train_epoch(self, log_interval=100, threshold=0.5):
         '''Perform a single training epoch.'''
+
         self.model.train()
+
         batch_losses = []
+
         for batch_idx, (X_batch, y_batch) in enumerate(self.train_loader):
+
             # device
             X_batch = X_batch.to(self.device)
             y_batch = y_batch.to(self.device)
+
             # forward
             y_pred = self.model(X_batch)
+
             if isinstance(self.criterion, nn.BCEWithLogitsLoss):
                 y_batch = y_batch.view(*y_pred.shape).float()
             elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
                 y_batch = y_batch.view(-1)
+
             loss = self.criterion(y_pred, y_batch)
+
             # backward
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
             # analysis
             batch_loss = loss.data.item()
+
             batch_losses.append(batch_loss)
+
             if len(batch_losses) < 3:
                 running_loss = batch_loss
             else:
                 running_loss = _moving_average(batch_losses, window=3, mode='last')
+
             no_total = X_batch.shape[0]
+
             if isinstance(self.criterion, nn.BCEWithLogitsLoss):
                 is_correct = (torch.sigmoid(y_pred) >= threshold).squeeze().int() == y_batch.squeeze().int()
             elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
                 is_correct = torch.max(y_pred, dim=1)[1].squeeze().int() == y_batch.squeeze().int()
+
             no_correct = torch.sum(is_correct).item()
+
             batch_acc = no_correct / no_total
+
             if log_interval is not None:
                 if (batch_idx+1) % log_interval == 0 or (batch_idx+1) == len(self.train_loader):
                     print('Epoch: {} ({}/{}), batch loss: {:.4f}, batch acc.: {:.4f}' \
                           .format(self.epoch+1, batch_idx+1, len(self.train_loader), batch_loss, batch_acc))
+
         return running_loss
 
+    @torch.no_grad()
     def test(self, test_loader=None, no_epochs=1, threshold=0.5):
         '''Compute average test loss and accuracy.'''
+
         if test_loader is None:
             test_loader = self.val_loader
+
         self.model.eval()
-        with torch.no_grad():
-            no_total = 0
-            no_correct = 0
-            test_loss = 0.0
-            for epoch_idx in range(no_epochs):
-                for X_batch, y_batch in test_loader:
-                    # device
-                    X_batch = X_batch.to(self.device)
-                    y_batch = y_batch.to(self.device)
-                    # forward
-                    y_pred = self.model(X_batch)
-                    if isinstance(self.criterion, nn.BCEWithLogitsLoss):
-                        y_batch = y_batch.view(*y_pred.shape).float()
-                    elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
-                        y_batch = y_batch.view(-1)
-                    loss = self.criterion(y_pred, y_batch)
-                    # analysis
-                    test_loss += loss.data.item()
-                    no_total += X_batch.shape[0]
-                    if isinstance(self.criterion, nn.BCEWithLogitsLoss):
-                        is_correct = (torch.sigmoid(y_pred) >= threshold).squeeze().int() == y_batch.squeeze().int()
-                    elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
-                        is_correct = torch.max(y_pred, dim=1)[1].squeeze().int() == y_batch.squeeze().int()
-                    no_correct += torch.sum(is_correct).item()
-            test_acc = no_correct / no_total
-            if self.criterion.reduction == 'sum': # averaging over all data
-                test_loss /= len(test_loader.dataset)
-            elif self.criterion.reduction == 'mean': # averaging over batches
-                test_loss /= len(test_loader)
-            return test_loss, test_acc
+
+        no_total = 0
+        no_correct = 0
+        test_loss = 0.
+
+        for epoch_idx in range(no_epochs):
+
+            for X_batch, y_batch in test_loader:
+
+                # device
+                X_batch = X_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+
+                # forward
+                y_pred = self.model(X_batch)
+
+                if isinstance(self.criterion, nn.BCEWithLogitsLoss):
+                    y_batch = y_batch.view(*y_pred.shape).float()
+                elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
+                    y_batch = y_batch.view(-1)
+
+                loss = self.criterion(y_pred, y_batch)
+
+                # analysis
+                test_loss += loss.data.item()
+
+                no_total += X_batch.shape[0]
+
+                if isinstance(self.criterion, nn.BCEWithLogitsLoss):
+                    is_correct = (torch.sigmoid(y_pred) >= threshold).squeeze().int() == y_batch.squeeze().int()
+                elif isinstance(self.criterion, (nn.CrossEntropyLoss, nn.NLLLoss)):
+                    is_correct = torch.max(y_pred, dim=1)[1].squeeze().int() == y_batch.squeeze().int()
+
+                no_correct += torch.sum(is_correct).item()
+
+        test_acc = no_correct / no_total
+
+        if self.criterion.reduction == 'sum': # averaging over all data
+            test_loss /= len(test_loader.dataset)
+        elif self.criterion.reduction == 'mean': # averaging over batches
+            test_loss /= len(test_loader)
+
+        return test_loss, test_acc
 
 
 def _moving_average(x, window=3, mode='full'):
@@ -393,9 +470,12 @@ def _moving_average(x, window=3, mode='full'):
     x = np.array(x)
 
     if mode == 'full':
+
         x_padded = np.pad(x, (window-1, 0), mode='constant', constant_values=x[0])
         running_mean = np.convolve(x_padded, np.ones((window,))/window, mode='valid')
+
     elif mode == 'last':
+
         if x.size >= window:
             running_mean = np.convolve(x[-window:], np.ones((window,))/window, mode='valid')[0]
         else:

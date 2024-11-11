@@ -5,7 +5,7 @@ from skimage.filters import laplace
 from skimage.color import rgb2gray
 
 
-class BlurScore():
+class BlurScore:
     '''
     Blurriness score based that can be normalized by the max. over an image set.
 
@@ -36,21 +36,27 @@ class BlurScore():
 
     def fit(self, images):
         '''Determine the max. blurriness and return the class instance.'''
+
         blurriness = self.evaluate(images, normalize=False)
         self.max_blur = np.max(blurriness)
+
         return self
 
     def fit_evaluate(self, images):
         '''Determine the max. blurriness and return normalized scores.'''
+
         blurriness = self.evaluate(images, normalize=False)
         self.max_blur = np.max(blurriness)
+
         return blurriness / self.max_blur
 
     def evaluate(self, images, normalize=True):
         '''Compute the (normalized) blurriness scores.'''
+
         # images in list
         if isinstance(images, list):
             blurriness = np.array([blur_score(image) for image in images])
+
         # image(s) as array
         elif isinstance(images, np.ndarray):
             if images.ndim == 4: # array with first axis as image id
@@ -59,6 +65,7 @@ class BlurScore():
                 blurriness = blur_score(images)
             else:
                 raise ValueError('Image has the wrong shape')
+
         else:
             raise ValueError('Image has the wrong type')
 
